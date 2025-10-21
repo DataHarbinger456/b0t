@@ -6,11 +6,11 @@ import { LayoutDashboard, Twitter, Youtube, Instagram, Settings, Cat, FlaskConic
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Test Replies', href: '/dashboard/test-replies', icon: FlaskConical },
-  { name: 'Limits', href: '/dashboard/limits', icon: BarChart3 },
   { name: 'Twitter', href: '/twitter', icon: Twitter },
   { name: 'YouTube', href: '/youtube', icon: Youtube },
   { name: 'Instagram', href: '/instagram', icon: Instagram },
+  { name: 'Limits', href: '/dashboard/limits', icon: BarChart3 },
+  { name: 'Test Replies', href: '/dashboard/test-replies', icon: FlaskConical },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

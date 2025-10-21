@@ -3,6 +3,8 @@ import { Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { Toaster } from "@/components/ui/sonner";
+import NextTopLoader from "nextjs-toploader";
+import { AppLoader } from "@/components/ui/app-loader";
 
 const robotoHeading = Roboto_Mono({
   weight: "500",
@@ -34,6 +36,15 @@ export default function RootLayout({
       <body
         className={`${robotoHeading.variable} ${robotoBody.variable} antialiased`}
       >
+        <AppLoader />
+        <NextTopLoader
+          color="#0070f3"
+          height={2}
+          showSpinner={false}
+          easing="ease"
+          speed={200}
+          shadow="0 0 10px #0070f3,0 0 5px #0070f3"
+        />
         <SessionProvider>{children}</SessionProvider>
         <Toaster />
       </body>
