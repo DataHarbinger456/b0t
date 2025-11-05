@@ -45,9 +45,20 @@ export async function POST(
       ? JSON.parse(workflow.config)
       : workflow.config;
 
-    // Get the last user message
+    // Get the last user message - handle both content and parts format
     const lastMessage = messages[messages.length - 1];
-    const userInput = lastMessage?.content || '';
+    let userInput = '';
+    if (lastMessage?.content) {
+      userInput = typeof lastMessage.content === 'string'
+        ? lastMessage.content
+        : JSON.stringify(lastMessage.content);
+    } else if (lastMessage?.parts) {
+      // Handle parts format
+      const textParts = (lastMessage.parts as Array<{ type: string; text?: string }>)
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text || '');
+      userInput = textParts.join(' ');
+    }
 
     logger.info({ workflowId, messageCount: messages.length }, 'Starting chat stream');
 
@@ -64,6 +75,43 @@ Your job is to:
 
 Be friendly, concise, and helpful. If the workflow produces data, explain it clearly to the user.`;
 
+    // Convert messages from parts format to standard format and filter
+    type MessageLike = { role: string; content?: unknown; parts?: Array<{ type: string; text?: string }> };
+    const formattedMessages = (messages as MessageLike[])
+      .filter((msg) => msg.role === 'user') // Only keep user messages
+      .map((msg) => {
+        // If already has content field, use it
+        if (msg.content) {
+          return {
+            role: 'user' as const,
+            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+          };
+        }
+
+        // Convert from parts format to content format
+        if (msg.parts) {
+          const textContent = msg.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text || '')
+            .join('\n');
+
+          return {
+            role: 'user' as const,
+            content: textContent
+          };
+        }
+
+        // Fallback
+        return {
+          role: 'user' as const,
+          content: ''
+        };
+      })
+      .filter((msg) => msg.content); // Remove empty messages
+
+    // Log the formatted messages for debugging
+    logger.info({ workflowId, formattedMessages }, 'Formatted messages for AI');
+
     // Stream the AI response using AI SDK
     // Note: This uses the AI SDK directly (not the module system) because:
     // - It's UI-specific streaming (not a workflow action)
@@ -72,9 +120,9 @@ Be friendly, concise, and helpful. If the workflow produces data, explain it cle
     const result = streamText({
       model: openai('gpt-4-turbo'),
       system: systemPrompt,
-      messages,
+      messages: formattedMessages,
       async onFinish({ text }) {
-        logger.info({ workflowId, responseLength: text.length }, 'AI response completed, executing workflow');
+        logger.info({ workflowId, responseLength: text.length, text }, 'AI response completed, executing workflow');
 
         // Execute the workflow using the workflow execution engine
         // This properly uses the module system and all workflow infrastructure
@@ -90,9 +138,15 @@ Be friendly, concise, and helpful. If the workflow produces data, explain it cle
       },
     });
 
-    return result.toTextStreamResponse();
+    return result.toUIMessageStreamResponse();
   } catch (error) {
-    logger.error({ workflowId, error }, 'Chat error');
-    return new Response('Internal server error', { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    logger.error({ workflowId, error: errorMessage, stack: errorStack }, 'Chat error');
+    console.error('Chat API error:', error);
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }

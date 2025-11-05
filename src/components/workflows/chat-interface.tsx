@@ -1,7 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, UIMessage } from 'ai';
+import { DefaultChatTransport } from 'ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
@@ -42,29 +42,28 @@ export function ChatInterface({
       {
         id: 'welcome',
         role: 'assistant',
-        parts: [{
-          type: 'text',
-          text: `Hi! I'm here to help you with **${workflowName}**.\n\n${workflowDescription || 'How can I assist you today?'}`,
-        }],
+        parts: [
+          {
+            type: 'text',
+            text: `Hi! I'm here to help you with **${workflowName}**.\n\n${workflowDescription || 'How can I assist you today?'}`,
+          },
+        ],
       },
-    ] as UIMessage[],
+    ],
   });
 
-  // Debug: log messages
-  useEffect(() => {
-    console.log('Messages updated:', messages);
-    messages.forEach((msg, idx) => {
-      const textPart = msg.parts?.find((part) => part.type === 'text');
-      console.log(`Message ${idx}:`, {
-        role: msg.role,
-        text: textPart?.type === 'text' ? textPart.text : undefined,
-        allKeys: Object.keys(msg),
-        fullMessage: msg
-      });
-    });
-  }, [messages]);
+  // Extract text content from message parts
+  const getMessageText = (message: typeof messages[0]) => {
+    if (!message.parts || message.parts.length === 0) return '';
+    return (message.parts as Array<{ type: string; text?: string }>)
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text || '')
+      .join('');
+  };
 
-  const isLoading = status === 'submitted' || status === 'streaming';
+  // Only show loading if we're waiting for a response (no assistant message being streamed yet)
+  const lastMessage = messages[messages.length - 1];
+  const isLoading = (status === 'submitted' || status === 'streaming') && (lastMessage?.role as string) === 'user';
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -115,10 +114,10 @@ export function ChatInterface({
               transition={{ duration: 0.3, ease: 'easeOut' }}
               className={cn(
                 'flex gap-4',
-                message.role === 'user' ? 'justify-end' : 'justify-start'
+                (message.role as string) === 'user' ? 'justify-end' : 'justify-start'
               )}
             >
-              {message.role === 'assistant' && (
+              {(message.role as string) === 'assistant' && (
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <Bot className="w-5 h-5 text-primary" />
                 </div>
@@ -127,12 +126,12 @@ export function ChatInterface({
               <div
                 className={cn(
                   'max-w-[80%] rounded-2xl px-4 py-3',
-                  message.role === 'user'
+                  (message.role as string) === 'user'
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted'
                 )}
               >
-                {message.role === 'assistant' ? (
+                {(message.role as string) === 'assistant' ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/5 dark:prose-pre:bg-white/5 prose-pre:p-4 prose-pre:rounded-lg prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:bg-black/10 dark:prose-code:bg-white/10 prose-code:before:content-[''] prose-code:after:content-['']">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -153,23 +152,17 @@ export function ChatInterface({
                         },
                       } as Partial<Components>}
                     >
-                      {(() => {
-                        const textPart = message.parts?.find((part) => part.type === 'text');
-                        return textPart?.type === 'text' ? textPart.text : '';
-                      })()}
+                      {getMessageText(message)}
                     </ReactMarkdown>
                   </div>
                 ) : (
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {(() => {
-                      const textPart = message.parts?.find((part) => part.type === 'text');
-                      return textPart?.type === 'text' ? textPart.text : '';
-                    })()}
+                    {getMessageText(message)}
                   </p>
                 )}
               </div>
 
-              {message.role === 'user' && (
+              {(message.role as string) === 'user' && (
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                   <User className="w-5 h-5 text-primary-foreground" />
                 </div>
