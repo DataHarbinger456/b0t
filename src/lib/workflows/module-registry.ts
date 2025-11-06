@@ -308,6 +308,25 @@ export function getModuleRegistry(): ModuleCategory[] {
               description: 'Exchange auth code for tokens',
               signature: 'getTokensFromCode(code)',
             },
+            // API Key versions (read-only, no OAuth required)
+            {
+              name: 'searchVideosWithApiKey',
+              description: 'Search for videos using API key (read-only, simpler auth)',
+              signature: 'searchVideosWithApiKey(query, apiKey, maxResults?)',
+              example: 'searchVideosWithApiKey("AI tutorials", apiKey, 10)',
+            },
+            {
+              name: 'getVideoDetailsWithApiKey',
+              description: 'Get video details using API key (read-only)',
+              signature: 'getVideoDetailsWithApiKey(videoId, apiKey)',
+              example: 'getVideoDetailsWithApiKey("dQw4w9WgXcQ", apiKey)',
+            },
+            {
+              name: 'getChannelDetailsWithApiKey',
+              description: 'Get channel details using API key (read-only)',
+              signature: 'getChannelDetailsWithApiKey(channelId, apiKey)',
+              example: 'getChannelDetailsWithApiKey("UC...", apiKey)',
+            },
           ],
         },
         {

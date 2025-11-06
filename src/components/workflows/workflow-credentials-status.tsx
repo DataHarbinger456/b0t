@@ -27,12 +27,13 @@ interface ApiKey {
 
 interface CredentialStatus {
   platform: string;
-  type: 'oauth' | 'api_key';
+  type: 'oauth' | 'api_key' | 'both' | 'optional';
   displayName: string;
   icon: string;
   connected: boolean;
   accounts: OAuthAccount[];
   keys: ApiKey[];
+  preferredType?: 'oauth' | 'api_key'; // For 'both' and 'optional' types
 }
 
 interface WorkflowCredentialsStatusProps {
@@ -158,6 +159,104 @@ export function WorkflowCredentialsStatus({ workflowId }: WorkflowCredentialsSta
       <div className="space-y-1.5">
         {credentials.map((cred) => {
           const IconComponent = (Icons as unknown as Record<string, typeof Key>)[cred.icon] || Key;
+
+          // 'both' or 'optional' type - show both OAuth and API key options
+          if ((cred.type === 'both' || cred.type === 'optional') && (cred.accounts.length > 0 || cred.keys.length > 0)) {
+            const hasOAuth = cred.accounts.length > 0;
+            const hasApiKey = cred.keys.length > 0;
+
+            return (
+              <div
+                key={cred.platform}
+                className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 transition-all duration-200 hover:bg-muted/40 hover:border-border"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <IconComponent className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs font-medium truncate text-foreground">{cred.displayName}</span>
+                  <div className="flex items-center gap-1 text-xs">
+                    {hasOAuth && (
+                      <span className="text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        OAuth
+                      </span>
+                    )}
+                    {hasOAuth && hasApiKey && <span className="text-muted-foreground">or</span>}
+                    {hasApiKey && (
+                      <span className="text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        API Key
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {!hasOAuth && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs flex-shrink-0 transition-all duration-200 hover:scale-105 active:scale-95"
+                      onClick={() => handleOAuthConnect(cred.platform)}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      OAuth
+                    </Button>
+                  )}
+                  {!hasApiKey && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs flex-shrink-0 transition-all duration-200 hover:scale-105 active:scale-95"
+                      onClick={() => handleAddApiKey(cred.platform)}
+                    >
+                      <Key className="h-3 w-3 mr-1" />
+                      API Key
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          // 'both' or 'optional' type - no credentials yet, show both options
+          if ((cred.type === 'both' || cred.type === 'optional') && cred.accounts.length === 0 && cred.keys.length === 0) {
+            const preferred = cred.preferredType || 'api_key';
+
+            return (
+              <div
+                key={cred.platform}
+                className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 transition-all duration-200 hover:bg-muted/40 hover:border-border"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <IconComponent className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs font-medium truncate text-foreground">{cred.displayName}</span>
+                  {cred.type === 'optional' && (
+                    <span className="text-[10px] text-muted-foreground">(optional)</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant={preferred === 'oauth' ? 'default' : 'outline'}
+                    className="h-6 px-2 text-xs flex-shrink-0 transition-all duration-200 hover:scale-105 active:scale-95"
+                    onClick={() => handleOAuthConnect(cred.platform)}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    OAuth
+                  </Button>
+                  <span className="text-xs text-muted-foreground">or</span>
+                  <Button
+                    size="sm"
+                    variant={preferred === 'api_key' ? 'default' : 'outline'}
+                    className="h-6 px-2 text-xs flex-shrink-0 transition-all duration-200 hover:scale-105 active:scale-95"
+                    onClick={() => handleAddApiKey(cred.platform)}
+                  >
+                    <Key className="h-3 w-3 mr-1" />
+                    API Key
+                  </Button>
+                </div>
+              </div>
+            );
+          }
 
           // OAuth platform with multiple accounts
           if (cred.type === 'oauth' && cred.accounts.length > 1) {

@@ -176,31 +176,60 @@ export async function GET(
       }
     }
 
+    // Platform aliases for credential lookup
+    // Maps platform names (from analyze-credentials) to actual credential IDs (from platform-configs)
+    const platformAliases: Record<string, string[]> = {
+      'youtube': ['youtube_apikey', 'youtube'],
+      'twitter': ['twitter_oauth2', 'twitter'],
+      'github': ['github_oauth', 'github'],
+      'google-sheets': ['googlesheets', 'googlesheets_oauth'],
+      'googlesheets': ['googlesheets', 'googlesheets_oauth'],
+      'google-calendar': ['googlecalendar', 'googlecalendar_serviceaccount'],
+      'googlecalendar': ['googlecalendar', 'googlecalendar_serviceaccount'],
+      'notion': ['notion_oauth', 'notion'],
+      'airtable': ['airtable_oauth', 'airtable'],
+      'hubspot': ['hubspot_oauth', 'hubspot'],
+      'salesforce': ['salesforce_jwt', 'salesforce'],
+      'slack': ['slack_oauth', 'slack'],
+      'discord': ['discord_oauth', 'discord'],
+      'stripe': ['stripe_connect', 'stripe'],
+    };
+
     // Build credential status list
     const credentials = requiredCredentials.map((cred) => {
-      if (cred.type === 'oauth') {
-        const accounts = oauthAccounts[cred.platform] || [];
-        return {
-          platform: cred.platform,
-          type: cred.type,
-          displayName: getPlatformDisplayName(cred.platform),
-          icon: getPlatformIcon(cred.platform),
-          connected: accounts.length > 0,
-          accounts,
-          keys: [],
-        };
-      } else {
-        const keys = apiKeys[cred.platform] || [];
-        return {
-          platform: cred.platform,
-          type: cred.type,
-          displayName: getPlatformDisplayName(cred.platform),
-          icon: getPlatformIcon(cred.platform),
-          connected: keys.length > 0,
-          accounts: [],
-          keys,
-        };
+      // Check both the exact platform name and any aliases
+      const platformsToCheck = [cred.platform, ...(platformAliases[cred.platform] || [])];
+
+      let accounts: Array<{ id: string; accountName: string; isExpired: boolean }> = [];
+      let keys: Array<{ id: string; name: string }> = [];
+
+      // Collect accounts and keys from all matching platforms
+      for (const platform of platformsToCheck) {
+        accounts = [...accounts, ...(oauthAccounts[platform] || [])];
+        keys = [...keys, ...(apiKeys[platform] || [])];
       }
+
+      // Determine connection status based on credential type
+      let connected = false;
+      if (cred.type === 'oauth') {
+        connected = accounts.length > 0;
+      } else if (cred.type === 'api_key') {
+        connected = keys.length > 0;
+      } else if (cred.type === 'both' || cred.type === 'optional') {
+        // For 'both' and 'optional', connected if EITHER OAuth or API key is available
+        connected = accounts.length > 0 || keys.length > 0;
+      }
+
+      return {
+        platform: cred.platform,
+        type: cred.type,
+        displayName: getPlatformDisplayName(cred.platform),
+        icon: getPlatformIcon(cred.platform),
+        connected,
+        accounts,
+        keys,
+        preferredType: cred.preferredType,
+      };
     });
 
     return NextResponse.json({ credentials });

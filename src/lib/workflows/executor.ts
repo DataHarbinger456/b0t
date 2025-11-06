@@ -146,6 +146,9 @@ export async function executeWorkflow(
           ...userCredentials, // e.g., { openai: "sk-...", stripe: "sk_test_..." }
         },
         trigger: triggerData || {},
+        // Also add credentials to top-level for convenience
+        // Allows both {{user.youtube_apikey}} and {{youtube_apikey}} syntax
+        ...userCredentials,
       },
       workflowId,
       runId,
@@ -467,6 +470,17 @@ async function executeModuleFunction(
 
     const func = moduleFile[functionName];
 
+    // Debug logging for credential-related functions
+    if (modulePath.includes('youtube') || modulePath.includes('searchVideos')) {
+      logger.info({
+        modulePath,
+        functionName,
+        inputKeys: Object.keys(inputs),
+        hasApiKey: 'apiKey' in inputs,
+        apiKeyValue: inputs.apiKey ? `${String(inputs.apiKey).substring(0, 10)}...` : 'MISSING'
+      }, 'Executing YouTube function with inputs');
+    }
+
     // Call the function with inputs
     // Determine if we should pass as object or spread parameters
     const func_str = func.toString();
@@ -506,30 +520,82 @@ async function executeModuleFunction(
         msg: 'Parameter mapping analysis'
       });
 
-      // Try to map inputs to parameter order
-      // Check if all param names have corresponding inputs
-      const hasAllParams = paramNames.every((name: string) => name in inputs);
+      // Common parameter aliases that LLMs might use
+      const paramAliases: Record<string, string[]> = {
+        'days': ['amount', 'value', 'number'],
+        'hours': ['amount', 'value', 'number'],
+        'minutes': ['amount', 'value', 'number'],
+        'limit': ['maxResults', 'max', 'count'],
+        'query': ['search', 'q', 'term'],
+        'text': ['message', 'content', 'body'],
+      };
 
-      if (hasAllParams) {
-        // Perfect match - map inputs to parameter order
-        const orderedValues = paramNames.map((name: string) => inputs[name]);
+      // Try to map inputs to parameter order with alias support
+      const orderedValues: unknown[] = [];
+      const mappingLog: string[] = [];
+      let hasAllParams = true;
+
+      for (const paramName of paramNames) {
+        let value: unknown = undefined;
+        let matchedKey: string | undefined;
+
+        // Try exact match first
+        if (paramName in inputs) {
+          value = inputs[paramName];
+          matchedKey = paramName;
+        } else {
+          // Try aliases
+          const aliases = paramAliases[paramName] || [];
+          for (const alias of aliases) {
+            if (alias in inputs) {
+              value = inputs[alias];
+              matchedKey = alias;
+              break;
+            }
+          }
+        }
+
+        if (matchedKey !== undefined) {
+          orderedValues.push(value);
+          mappingLog.push(`${paramName}=${JSON.stringify(value)} (from ${matchedKey})`);
+        } else {
+          // Required param not found
+          hasAllParams = false;
+          break;
+        }
+      }
+
+      if (hasAllParams && orderedValues.length === paramNames.length) {
+        // Successfully mapped all parameters
         logger.debug({
-          msg: 'Mapped parameters to function signature order',
-          mapping: paramNames.map((name: string, i: number) => `${name}=${JSON.stringify(orderedValues[i])}`)
+          msg: 'Mapped parameters to function signature order (with aliases)',
+          mapping: mappingLog
         });
         return await func(...orderedValues);
-      } else {
-        // Parameter names don't match input keys - this is an error
-        // DO NOT fall back to Object.values as that uses insertion order, not parameter order
-        const errorMsg = `Parameter mismatch for ${modulePath}: Function expects [${paramNames.join(', ')}] but workflow provided [${Object.keys(inputs).join(', ')}]`;
-        logger.error({
-          modulePath,
+      }
+
+      // If we have the same number of inputs as params but names don't match,
+      // try positional matching as last resort (for backward compatibility)
+      if (inputKeys.length === paramNames.length) {
+        const positionalValues = Object.values(inputs);
+        logger.warn({
+          msg: 'Using positional parameter matching (input names do not match function signature)',
           expectedParams: paramNames,
           providedInputs: Object.keys(inputs),
-          msg: errorMsg
+          modulePath
         });
-        throw new Error(errorMsg);
+        return await func(...positionalValues);
       }
+
+      // Still no match - this is an error
+      const errorMsg = `Parameter mismatch for ${modulePath}: Function expects [${paramNames.join(', ')}] but workflow provided [${Object.keys(inputs).join(', ')}]`;
+      logger.error({
+        modulePath,
+        expectedParams: paramNames,
+        providedInputs: Object.keys(inputs),
+        msg: errorMsg
+      });
+      throw new Error(errorMsg);
     }
   } catch (error) {
     logger.error({
@@ -606,8 +672,54 @@ async function loadUserCredentials(userId: string): Promise<Record<string, strin
         }
       }
 
-      // 2. Load API keys (TODO: Implement PostgreSQL user_credentials table)
-      // For now, PostgreSQL only supports OAuth credentials from accounts table
+      // 2. Load API keys from user_credentials table
+      const { userCredentialsTablePostgres } = await import('@/lib/schema');
+      const credentials = await postgresDb
+        .select()
+        .from(userCredentialsTablePostgres)
+        .where(eq(userCredentialsTablePostgres.userId, userId));
+
+      for (const cred of credentials) {
+        if (cred.encryptedValue) {
+          const { decrypt } = await import('@/lib/encryption');
+          const decryptedValue = await decrypt(cred.encryptedValue);
+          credentialMap[cred.platform] = decryptedValue;
+        }
+      }
+    }
+
+    // Add platform aliases for dual-auth platforms
+    // Maps module names (from workflow paths) to all possible credential IDs
+    const platformAliases: Record<string, string[]> = {
+      'youtube': ['youtube_apikey', 'youtube'],
+      'twitter': ['twitter_oauth2', 'twitter'],
+      'github': ['github_oauth', 'github'],
+      'google-sheets': ['googlesheets', 'googlesheets_oauth'],
+      'googlesheets': ['googlesheets', 'googlesheets_oauth'],
+      'google-calendar': ['googlecalendar', 'googlecalendar_serviceaccount'],
+      'googlecalendar': ['googlecalendar', 'googlecalendar_serviceaccount'],
+      'notion': ['notion_oauth', 'notion'],
+      'airtable': ['airtable_oauth', 'airtable'],
+      'hubspot': ['hubspot_oauth', 'hubspot'],
+      'salesforce': ['salesforce_jwt', 'salesforce'],
+      'slack': ['slack_oauth', 'slack'],
+      'discord': ['discord_oauth', 'discord'],
+      'stripe': ['stripe_connect', 'stripe'],
+    };
+
+    // Apply aliases: check if any credential ID in the list exists, then make it available under all alias names
+    for (const [platformName, credentialIds] of Object.entries(platformAliases)) {
+      // Find the first credential that exists
+      const existingCred = credentialIds.find(id => credentialMap[id]);
+
+      if (existingCred) {
+        // Make this credential available under all alias names
+        for (const aliasName of [platformName, ...credentialIds]) {
+          if (!credentialMap[aliasName]) {
+            credentialMap[aliasName] = credentialMap[existingCred];
+          }
+        }
+      }
     }
 
     logger.info(
@@ -615,8 +727,14 @@ async function loadUserCredentials(userId: string): Promise<Record<string, strin
         userId,
         credentialCount: Object.keys(credentialMap).length,
         platforms: Object.keys(credentialMap),
+        // Debug: show what credentials are actually loaded
+        credentialDetails: Object.keys(credentialMap).map(key => ({
+          platform: key,
+          hasValue: !!credentialMap[key],
+          valueLength: credentialMap[key]?.length || 0
+        }))
       },
-      'User credentials loaded (OAuth + API keys)'
+      'User credentials loaded (OAuth + API keys + aliases)'
     );
 
     return credentialMap;

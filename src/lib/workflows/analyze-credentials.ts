@@ -1,12 +1,314 @@
 /**
  * Analyze workflow configuration to extract required credentials
+ * Intelligently detects which platforms need credentials based on:
+ * 1. Module paths (e.g., social.reddit.getSubredditPosts)
+ * 2. Specific functions being used
+ * 3. Platform capabilities (some functions work without credentials)
  */
 
 export interface RequiredCredential {
   platform: string;
-  type: 'oauth' | 'api_key';
+  type: 'oauth' | 'api_key' | 'both' | 'optional' | 'none';
   variable: string; // e.g., "user.twitter", "user.openai"
+  preferredType?: 'oauth' | 'api_key'; // When type is 'both' or 'optional', which to show first
+  functions?: string[]; // Which specific functions need this credential
 }
+
+/**
+ * Platform capabilities registry
+ * Defines authentication requirements for each platform
+ */
+interface PlatformCapability {
+  // none: No credentials needed (RSS, HTTP, utilities)
+  // optional: Some functions work without credentials, others require them
+  // api_key: Requires API key/token
+  // oauth: Requires OAuth flow
+  // both: Supports either OAuth or API key (user's choice)
+  category: 'none' | 'optional' | 'api_key' | 'oauth' | 'both';
+  preferredMethod?: 'oauth' | 'api_key'; // For 'both' and 'optional' categories
+  functionRequirements?: Record<string, 'oauth' | 'api_key' | 'none'>;
+}
+
+const PLATFORM_CAPABILITIES: Record<string, PlatformCapability> = {
+  // ============================================
+  // NO CREDENTIALS NEEDED
+  // ============================================
+
+  // Utilities (all functions work without credentials)
+  'rss': { category: 'none' },
+  'http': { category: 'none' },
+  'scraper': { category: 'none' },
+  'web-scraper': { category: 'none' },
+  'datetime': { category: 'none' },
+  'filesystem': { category: 'none' },
+  'csv': { category: 'none' },
+  'json-transform': { category: 'none' },
+  'compression': { category: 'none' },
+  'encryption': { category: 'none' },
+  'xml': { category: 'none' },
+  'pdf': { category: 'none' },
+  'image': { category: 'none' },
+
+  // ============================================
+  // OPTIONAL CREDENTIALS
+  // ============================================
+
+  // Reddit: Read-only works publicly, write requires OAuth
+  'reddit': {
+    category: 'optional',
+    preferredMethod: 'oauth',
+    functionRequirements: {
+      // Works without credentials (public JSON API)
+      'getSubredditPosts': 'none',
+      // Requires OAuth
+      'submitPost': 'oauth',
+      'commentOnPost': 'oauth',
+      'replyToComment': 'oauth',
+      'searchPosts': 'oauth',
+      'upvotePost': 'oauth',
+      'downvotePost': 'oauth',
+    },
+  },
+
+  // ============================================
+  // BOTH (OAuth OR API key)
+  // ============================================
+
+  // YouTube: Supports both OAuth and API key
+  'youtube': {
+    category: 'both',
+    preferredMethod: 'api_key', // API key is simpler for read-only operations
+    functionRequirements: {
+      // Works with API key (read-only)
+      'searchVideosWithApiKey': 'api_key',
+      'getVideoDetailsWithApiKey': 'api_key',
+      'getChannelDetailsWithApiKey': 'api_key',
+      // OAuth versions (for backwards compatibility or when using OAuth)
+      'searchVideos': 'oauth',
+      'getVideoDetails': 'oauth',
+      'getChannelDetails': 'oauth',
+      // Require OAuth (write operations)
+      'postComment': 'oauth',
+      'replyToComment': 'oauth',
+      'deleteComment': 'oauth',
+      'getVideoComments': 'oauth',
+      'getRecentVideos': 'oauth',
+      'markCommentAsSpam': 'oauth',
+      'setCommentModerationStatus': 'oauth',
+      'getComment': 'oauth',
+    },
+  },
+
+  // Twitter: Supports both OAuth 1.0a and OAuth 2.0
+  'twitter': {
+    category: 'both',
+    preferredMethod: 'api_key', // OAuth 1.0a tokens (app-level)
+    functionRequirements: {
+      // Both support (dual implementation exists)
+      'createTweet': 'api_key', // Can use either
+      'replyToTweet': 'api_key',
+      'createThread': 'api_key',
+      // OAuth 1.0a functions
+      'getUserTimeline': 'api_key',
+      'searchTweets': 'api_key',
+    },
+  },
+
+  // GitHub: Supports Personal Access Tokens and OAuth
+  'github': {
+    category: 'both',
+    preferredMethod: 'api_key', // Personal Access Token is simpler
+    functionRequirements: {
+      // Works without credentials (public data)
+      'getTrendingRepositories': 'none',
+      // All authenticated functions work with both PAT and OAuth
+      'createIssue': 'api_key',
+      'createPullRequest': 'api_key',
+      'searchRepositories': 'api_key',
+      'getRepository': 'api_key',
+      'listIssues': 'api_key',
+      'listPullRequests': 'api_key',
+      'createRelease': 'api_key',
+      'addIssueComment': 'api_key',
+    },
+  },
+
+  // Google Sheets: Supports Service Account (JWT) and OAuth
+  'google-sheets': {
+    category: 'both',
+    preferredMethod: 'api_key', // Service Account is simpler for automation
+    functionRequirements: {
+      // All functions work with both
+      'getRows': 'api_key',
+      'addRow': 'api_key',
+      'updateRow': 'api_key',
+      'deleteRow': 'api_key',
+      'clearSheet': 'api_key',
+    },
+  },
+
+  // Google Calendar: Supports OAuth and Service Account
+  'google-calendar': {
+    category: 'both',
+    preferredMethod: 'oauth', // User calendar access typically needs OAuth
+    functionRequirements: {
+      // All functions work with both
+      'listEvents': 'oauth',
+      'createEvent': 'oauth',
+      'updateEvent': 'oauth',
+      'deleteEvent': 'oauth',
+      'getEvent': 'oauth',
+    },
+  },
+
+  // Notion: Supports Integration Token (API key) and OAuth
+  'notion': {
+    category: 'both',
+    preferredMethod: 'api_key', // Integration token simpler for single workspace
+    functionRequirements: {
+      // All functions work with both
+      'queryDatabase': 'api_key',
+      'createPage': 'api_key',
+      'updatePage': 'api_key',
+      'getPage': 'api_key',
+      'getDatabase': 'api_key',
+    },
+  },
+
+  // Airtable: Supports Personal Access Token and OAuth
+  'airtable': {
+    category: 'both',
+    preferredMethod: 'api_key', // Personal token simpler
+    functionRequirements: {
+      // All functions work with both
+      'listRecords': 'api_key',
+      'createRecord': 'api_key',
+      'updateRecord': 'api_key',
+      'deleteRecord': 'api_key',
+      'getRecord': 'api_key',
+    },
+  },
+
+  // HubSpot: Supports Private App API key and OAuth
+  'hubspot': {
+    category: 'both',
+    preferredMethod: 'api_key', // Private app token simpler
+    functionRequirements: {
+      // All CRM operations work with both
+      'createContact': 'api_key',
+      'updateContact': 'api_key',
+      'getContact': 'api_key',
+      'searchContacts': 'api_key',
+      'createDeal': 'api_key',
+      'updateDeal': 'api_key',
+    },
+  },
+
+  // Salesforce: Supports OAuth and JWT Bearer Flow
+  'salesforce': {
+    category: 'both',
+    preferredMethod: 'oauth', // User-level access typical
+    functionRequirements: {
+      // All operations work with both
+      'query': 'oauth',
+      'createRecord': 'oauth',
+      'updateRecord': 'oauth',
+      'deleteRecord': 'oauth',
+      'getRecord': 'oauth',
+    },
+  },
+
+  // Slack: Supports Bot Tokens and User OAuth
+  'slack': {
+    category: 'both',
+    preferredMethod: 'api_key', // Bot token simpler for team automation
+    functionRequirements: {
+      // Most functions work with bot tokens
+      'postMessage': 'api_key',
+      'postToChannel': 'api_key',
+      'updateMessage': 'api_key',
+      'deleteMessage': 'api_key',
+      'addReaction': 'api_key',
+      'getChannelHistory': 'api_key',
+    },
+  },
+
+  // Discord: Supports Bot Tokens and User OAuth
+  'discord': {
+    category: 'both',
+    preferredMethod: 'api_key', // Bot token simpler for server automation
+    functionRequirements: {
+      // Most functions work with bot tokens
+      'sendMessage': 'api_key',
+      'editMessage': 'api_key',
+      'deleteMessage': 'api_key',
+      'addReaction': 'api_key',
+      'createChannel': 'api_key',
+      'sendEmbed': 'api_key',
+    },
+  },
+
+  // Stripe: Supports Secret Keys and OAuth (Connect)
+  'stripe': {
+    category: 'both',
+    preferredMethod: 'api_key', // Secret key simpler for single account
+    functionRequirements: {
+      // All payment operations work with secret key
+      'createCustomer': 'api_key',
+      'createPaymentIntent': 'api_key',
+      'createSubscription': 'api_key',
+      'retrieveCustomer': 'api_key',
+      'listCustomers': 'api_key',
+    },
+  },
+
+  // ============================================
+  // OAUTH ONLY
+  // ============================================
+
+  'instagram': { category: 'oauth' },
+  'tiktok': { category: 'oauth' },
+  'linkedin': { category: 'oauth' },
+  'facebook': { category: 'oauth' },
+  'calendar': { category: 'oauth' }, // Alias for google-calendar
+
+  // ============================================
+  // API KEY ONLY
+  // ============================================
+
+  // AI Platforms
+  'openai': { category: 'api_key' },
+  'anthropic': { category: 'api_key' },
+  'cohere': { category: 'api_key' },
+  'huggingface': { category: 'api_key' },
+  'replicate': { category: 'api_key' },
+
+  // Communication
+  'telegram': { category: 'api_key' }, // Telegram uses bot tokens
+  'resend': { category: 'api_key' },
+  'sendgrid': { category: 'api_key' },
+  'twilio': { category: 'api_key' },
+
+  // Data
+  'mongodb': { category: 'api_key' }, // Connection string
+  'postgresql': { category: 'api_key' },
+  'mysql': { category: 'api_key' },
+
+  // Payments & Business
+  'rapidapi': { category: 'api_key' },
+
+  // Video & Media
+  'elevenlabs': { category: 'api_key' },
+  'runway': { category: 'api_key' },
+  'heygen': { category: 'api_key' },
+  'synthesia': { category: 'api_key' },
+  'cloudinary': { category: 'api_key' },
+
+  // Lead Generation
+  'hunter': { category: 'api_key' },
+  'apollo': { category: 'api_key' },
+  'clearbit': { category: 'api_key' },
+};
 
 /**
  * Extract all credential references from workflow config
@@ -28,21 +330,26 @@ export function analyzeWorkflowCredentials(
     config: Record<string, unknown>;
   }
 ): RequiredCredential[] {
-  const credentials = new Set<string>();
+  // Track platforms and their specific functions used
+  const platformUsage = new Map<string, Set<string>>();
+
+  // Also track explicit credential references
+  const explicitCredentials = new Set<string>();
 
   // Chat workflows require AI credentials based on CHAT_AI_PROVIDER env var
-  // Default to OpenAI, but can be configured to use Anthropic
   if (trigger?.type === 'chat') {
     const chatProvider = process.env.CHAT_AI_PROVIDER || 'openai';
-    credentials.add(chatProvider);
+    if (!platformUsage.has(chatProvider)) {
+      platformUsage.set(chatProvider, new Set());
+    }
   }
 
+  // Extract explicit {{user.platform}} references
   function extractFromValue(value: unknown) {
     if (typeof value === 'string') {
-      // Match {{user.platform}} patterns
       const matches = value.matchAll(/\{\{user\.([a-zA-Z0-9_-]+)\}\}/g);
       for (const match of matches) {
-        credentials.add(match[1]);
+        explicitCredentials.add(match[1]);
       }
     } else if (Array.isArray(value)) {
       value.forEach(extractFromValue);
@@ -57,80 +364,59 @@ export function analyzeWorkflowCredentials(
 
       const s = step as Record<string, unknown>;
 
-      // Extract credentials from module path (e.g., "social media.twitter.searchTweets" -> "twitter")
+      // Parse module path to extract platform and function
+      // Format: "category.platform.function" e.g., "social.reddit.getSubredditPosts"
       if (s.module && typeof s.module === 'string') {
-        const modulePath = s.module.toLowerCase();
+        const modulePath = s.module;
+        const parts = modulePath.split('.');
 
-        // Check for Twitter modules
-        if (modulePath.includes('twitter')) {
-          credentials.add('twitter');
+        if (parts.length >= 3) {
+          // Extract platform and function name
+          const platform = parts[parts.length - 2].toLowerCase();
+          const functionName = parts[parts.length - 1];
+
+          // Only track if this is an actual platform (not a utility module)
+          // Check if platform exists in PLATFORM_CAPABILITIES or if it might need credentials
+          // Skip utility modules like array-utils, scoring, etc.
+          const isUtilityModule = parts[0] === 'utilities' || parts[0] === 'util';
+
+          if (!isUtilityModule) {
+            // Track this platform and function usage
+            if (!platformUsage.has(platform)) {
+              platformUsage.set(platform, new Set());
+            }
+            platformUsage.get(platform)!.add(functionName);
+          }
         }
-        // Check for AI SDK module - supports both OpenAI and Anthropic
-        if (modulePath.includes('ai.ai-sdk') || modulePath.includes('ai-sdk')) {
-          // Check inputs to determine which provider is needed
+
+        // Special handling for AI SDK (can use multiple providers)
+        if (modulePath.includes('ai-sdk')) {
           const inputs = s.inputs as Record<string, unknown> | undefined;
           const provider = inputs?.provider as string | undefined;
           const model = inputs?.model as string | undefined;
           const apiKey = inputs?.apiKey as string | undefined;
 
-          // If apiKey references a variable, extract it
+          // Check if apiKey references a variable
           if (apiKey && typeof apiKey === 'string' && apiKey.includes('{{user.')) {
             const match = apiKey.match(/\{\{user\.([a-zA-Z0-9_-]+)\}\}/);
             if (match) {
-              credentials.add(match[1]);
+              explicitCredentials.add(match[1]);
             }
           } else {
-            // Detect provider from explicit provider field or model name
+            // Detect provider from config
+            let detectedProvider: string | null = null;
             if (provider === 'anthropic' || (model && (model.includes('claude') || model.includes('anthropic')))) {
-              credentials.add('anthropic');
+              detectedProvider = 'anthropic';
             } else if (provider === 'openai' || (model && (model.includes('gpt') || model.includes('o1') || model.includes('o3')))) {
-              credentials.add('openai');
-            } else {
-              // Default to both if we can't determine
-              credentials.add('openai');
-              credentials.add('anthropic');
+              detectedProvider = 'openai';
+            }
+
+            if (detectedProvider) {
+              if (!platformUsage.has(detectedProvider)) {
+                platformUsage.set(detectedProvider, new Set());
+              }
             }
           }
-        }
-        // Legacy: Check for old OpenAI modules (in case any old workflows exist)
-        if (modulePath.includes('ai.openai') && !modulePath.includes('ai-sdk')) {
-          credentials.add('openai');
-        }
-        // Legacy: Check for old Anthropic modules (in case any old workflows exist)
-        if ((modulePath.includes('ai.anthropic') || modulePath.includes('claude')) && !modulePath.includes('ai-sdk')) {
-          credentials.add('anthropic');
-        }
-        // Check for YouTube modules
-        if (modulePath.includes('youtube')) {
-          credentials.add('youtube');
-        }
-        // Check for Discord modules
-        if (modulePath.includes('discord')) {
-          credentials.add('discord');
-        }
-        // Check for Telegram modules
-        if (modulePath.includes('telegram')) {
-          credentials.add('telegram');
-        }
-        // Check for Instagram modules
-        if (modulePath.includes('instagram')) {
-          credentials.add('instagram');
-        }
-        // Check for Reddit modules
-        if (modulePath.includes('reddit')) {
-          credentials.add('reddit');
-        }
-        // Check for GitHub modules
-        if (modulePath.includes('github')) {
-          credentials.add('github');
-        }
-        // Check for Slack modules
-        if (modulePath.includes('slack')) {
-          credentials.add('slack');
-        }
-        // Check for RapidAPI modules
-        if (modulePath.includes('rapidapi')) {
-          credentials.add('rapidapi');
         }
       }
 
@@ -154,19 +440,112 @@ export function analyzeWorkflowCredentials(
 
   processSteps(config.steps);
 
-  // Map platform names to credential types
-  // OAuth platforms require user authorization flow
-  const oauthPlatforms = [
-    'twitter', 'youtube', 'instagram', 'discord', 'telegram', 'github',
-    'tiktok', 'vimeo', 'shopify', 'medium', 'linkedin', 'facebook',
-    'reddit', 'google', 'notion'
-  ];
+  // Combine explicit credentials with platform usage
+  for (const platform of explicitCredentials) {
+    if (!platformUsage.has(platform)) {
+      platformUsage.set(platform, new Set());
+    }
+  }
 
-  return Array.from(credentials).map((platform) => ({
-    platform,
-    type: oauthPlatforms.includes(platform) ? 'oauth' : 'api_key',
-    variable: `user.${platform}`,
-  }));
+  // Analyze each platform to determine if credentials are actually needed
+  const requiredCredentials: RequiredCredential[] = [];
+
+  for (const [platform, functions] of platformUsage.entries()) {
+    const capability = PLATFORM_CAPABILITIES[platform];
+
+    // Unknown platform - assume it needs API key
+    if (!capability) {
+      requiredCredentials.push({
+        platform,
+        type: 'api_key',
+        variable: `user.${platform}`,
+        functions: Array.from(functions),
+      });
+      continue;
+    }
+
+    // If platform category is 'none', skip it entirely
+    if (capability.category === 'none') {
+      continue;
+    }
+
+    // If platform is 'optional', check if any function actually needs credentials
+    if (capability.category === 'optional' && capability.functionRequirements) {
+      const needsCredentials = Array.from(functions).some((fn) => {
+        const requirement = capability.functionRequirements![fn];
+        return requirement && requirement !== 'none';
+      });
+
+      if (!needsCredentials) {
+        // All functions being used work without credentials
+        continue;
+      }
+
+      // Some functions need credentials
+      requiredCredentials.push({
+        platform,
+        type: capability.category,
+        variable: `user.${platform}`,
+        preferredType: capability.preferredMethod,
+        functions: Array.from(functions),
+      });
+      continue;
+    }
+
+    // For 'both' type platforms, determine actual requirement based on functions used
+    if (capability.category === 'both' && capability.functionRequirements) {
+      const functionsList = Array.from(functions);
+      const requiresOAuth = functionsList.some((fn) => {
+        const requirement = capability.functionRequirements![fn];
+        return requirement === 'oauth';
+      });
+      const requiresApiKey = functionsList.some((fn) => {
+        const requirement = capability.functionRequirements![fn];
+        return requirement === 'api_key';
+      });
+
+      // If workflow uses ONLY API key functions, require only API key
+      if (requiresApiKey && !requiresOAuth) {
+        requiredCredentials.push({
+          platform,
+          type: 'api_key',
+          variable: `user.${platform}`,
+          functions: functionsList,
+        });
+      }
+      // If workflow uses ONLY OAuth functions, require only OAuth
+      else if (requiresOAuth && !requiresApiKey) {
+        requiredCredentials.push({
+          platform,
+          type: 'oauth',
+          variable: `user.${platform}`,
+          functions: functionsList,
+        });
+      }
+      // If workflow uses BOTH types, show 'both'
+      else {
+        requiredCredentials.push({
+          platform,
+          type: 'both',
+          variable: `user.${platform}`,
+          preferredType: capability.preferredMethod,
+          functions: functionsList,
+        });
+      }
+      continue;
+    }
+
+    // Platform definitely needs credentials
+    requiredCredentials.push({
+      platform,
+      type: capability.category,
+      variable: `user.${platform}`,
+      preferredType: capability.preferredMethod,
+      functions: Array.from(functions),
+    });
+  }
+
+  return requiredCredentials;
 }
 
 /**
@@ -174,118 +553,56 @@ export function analyzeWorkflowCredentials(
  */
 export function getPlatformDisplayName(platform: string): string {
   const names: Record<string, string> = {
-    // Existing platforms
+    // Social
     twitter: 'Twitter',
     youtube: 'YouTube',
     instagram: 'Instagram',
     discord: 'Discord',
     telegram: 'Telegram',
     github: 'GitHub',
+    reddit: 'Reddit',
+    tiktok: 'TikTok',
+    linkedin: 'LinkedIn',
+    facebook: 'Facebook',
+
+    // AI
     openai: 'OpenAI',
     anthropic: 'Anthropic',
-    rapidapi: 'RapidAPI',
-    stripe: 'Stripe',
-    airtable: 'Airtable',
-    sendgrid: 'SendGrid',
-    slack: 'Slack',
+    cohere: 'Cohere',
+    huggingface: 'Hugging Face',
+    replicate: 'Replicate',
 
-    // Video Automation
+    // Communication
+    slack: 'Slack',
+    resend: 'Resend',
+    sendgrid: 'SendGrid',
+    twilio: 'Twilio',
+
+    // Data
+    mongodb: 'MongoDB',
+    postgresql: 'PostgreSQL',
+    mysql: 'MySQL',
+    airtable: 'Airtable',
+    notion: 'Notion',
+    'google-sheets': 'Google Sheets',
+    'google-calendar': 'Google Calendar',
+    calendar: 'Google Calendar',
+
+    // Payments & Business
+    stripe: 'Stripe',
+    rapidapi: 'RapidAPI',
+
+    // Video & Media
+    elevenlabs: 'ElevenLabs',
     runway: 'Runway',
     heygen: 'HeyGen',
     synthesia: 'Synthesia',
-    whisper: 'OpenAI Whisper',
-    elevenlabs: 'ElevenLabs',
     cloudinary: 'Cloudinary',
-    vimeo: 'Vimeo',
-    tiktok: 'TikTok',
-
-    // Business
-    hubspot: 'HubSpot',
-    salesforce: 'Salesforce',
-    pipedrive: 'Pipedrive',
-    quickbooks: 'QuickBooks',
-    freshbooks: 'FreshBooks',
-    xero: 'Xero',
-    docusign: 'DocuSign',
-    hellosign: 'HelloSign',
 
     // Lead Generation
     hunter: 'Hunter.io',
     apollo: 'Apollo.io',
     clearbit: 'Clearbit',
-    zoominfo: 'ZoomInfo',
-    lusha: 'Lusha',
-    proxycurl: 'Proxycurl',
-    phantombuster: 'PhantomBuster',
-    apify: 'Apify',
-
-    // E-Commerce
-    shopify: 'Shopify',
-    woocommerce: 'WooCommerce',
-    'amazon-sp': 'Amazon Seller',
-    etsy: 'Etsy',
-    ebay: 'eBay',
-    square: 'Square',
-    printful: 'Printful',
-
-    // Content
-    medium: 'Medium',
-    ghost: 'Ghost',
-    wordpress: 'WordPress',
-    unsplash: 'Unsplash',
-    pexels: 'Pexels',
-    canva: 'Canva',
-    bannerbear: 'Bannerbear',
-    placid: 'Placid',
-
-    // Developer Tools
-    'github-actions': 'GitHub Actions',
-    circleci: 'CircleCI',
-    jenkins: 'Jenkins',
-    vercel: 'Vercel',
-    netlify: 'Netlify',
-    heroku: 'Heroku',
-    datadog: 'Datadog',
-    sentry: 'Sentry',
-
-    // Data Processing (existing)
-    snowflake: 'Snowflake',
-    bigquery: 'BigQuery',
-    redshift: 'Redshift',
-    kafka: 'Kafka',
-    rabbitmq: 'RabbitMQ',
-    huggingface: 'Hugging Face',
-    replicate: 'Replicate',
-
-    // Communication (additional)
-    twilio: 'Twilio',
-    whatsapp: 'WhatsApp',
-    firebase: 'Firebase',
-    onesignal: 'OneSignal',
-    zendesk: 'Zendesk',
-    freshdesk: 'Freshdesk',
-    intercom: 'Intercom',
-
-    // Social (additional)
-    reddit: 'Reddit',
-
-    // Data (additional)
-    mongodb: 'MongoDB',
-    postgresql: 'PostgreSQL',
-    mysql: 'MySQL',
-    notion: 'Notion',
-    'google-sheets': 'Google Sheets',
-
-    // AI (additional)
-    cohere: 'Cohere',
-    mubert: 'Mubert',
-    suno: 'Suno',
-    'runway-video': 'Runway Video',
-    'replicate-video': 'Replicate Video',
-    'heygen-advanced': 'HeyGen Advanced',
-
-    // Utilities
-    resend: 'Resend',
   };
 
   return names[platform] || platform.charAt(0).toUpperCase() + platform.slice(1);
@@ -296,118 +613,56 @@ export function getPlatformDisplayName(platform: string): string {
  */
 export function getPlatformIcon(platform: string): string {
   const icons: Record<string, string> = {
-    // Existing platforms
+    // Social
     twitter: 'Twitter',
     youtube: 'Youtube',
     instagram: 'Instagram',
     discord: 'MessageSquare',
     telegram: 'Send',
     github: 'Github',
+    reddit: 'MessageSquare',
+    tiktok: 'Music',
+    linkedin: 'Linkedin',
+    facebook: 'Facebook',
+
+    // AI
     openai: 'Sparkles',
     anthropic: 'Zap',
-    rapidapi: 'Code',
-    stripe: 'CreditCard',
-    airtable: 'Database',
-    sendgrid: 'Mail',
-    slack: 'MessageCircle',
+    cohere: 'Sparkles',
+    huggingface: 'Brain',
+    replicate: 'Copy',
 
-    // Video Automation
+    // Communication
+    slack: 'MessageCircle',
+    resend: 'Mail',
+    sendgrid: 'Mail',
+    twilio: 'Phone',
+
+    // Data
+    mongodb: 'Database',
+    postgresql: 'Database',
+    mysql: 'Database',
+    airtable: 'Database',
+    notion: 'FileText',
+    'google-sheets': 'Sheet',
+    'google-calendar': 'Calendar',
+    calendar: 'Calendar',
+
+    // Payments & Business
+    stripe: 'CreditCard',
+    rapidapi: 'Code',
+
+    // Video & Media
+    elevenlabs: 'Volume2',
     runway: 'Video',
     heygen: 'UserCircle',
     synthesia: 'UserSquare',
-    whisper: 'Mic',
-    elevenlabs: 'Volume2',
     cloudinary: 'Cloud',
-    vimeo: 'PlayCircle',
-    tiktok: 'Music',
-
-    // Business
-    hubspot: 'Building2',
-    salesforce: 'CloudLightning',
-    pipedrive: 'TrendingUp',
-    quickbooks: 'Calculator',
-    freshbooks: 'FileText',
-    xero: 'Receipt',
-    docusign: 'FileSignature',
-    hellosign: 'PenTool',
 
     // Lead Generation
     hunter: 'Search',
     apollo: 'Target',
     clearbit: 'Users',
-    zoominfo: 'Telescope',
-    lusha: 'UserCheck',
-    proxycurl: 'Linkedin',
-    phantombuster: 'Bot',
-    apify: 'Bug',
-
-    // E-Commerce
-    shopify: 'ShoppingBag',
-    woocommerce: 'ShoppingCart',
-    'amazon-sp': 'Package',
-    etsy: 'Store',
-    ebay: 'Gavel',
-    square: 'CreditCard',
-    printful: 'Printer',
-
-    // Content
-    medium: 'BookOpen',
-    ghost: 'Ghost',
-    wordpress: 'FileEdit',
-    unsplash: 'Image',
-    pexels: 'Camera',
-    canva: 'Palette',
-    bannerbear: 'Frame',
-    placid: 'Layers',
-
-    // Developer Tools
-    'github-actions': 'GitBranch',
-    circleci: 'Circle',
-    jenkins: 'Wrench',
-    vercel: 'Triangle',
-    netlify: 'Hexagon',
-    heroku: 'Server',
-    datadog: 'Activity',
-    sentry: 'AlertTriangle',
-
-    // Data Processing
-    snowflake: 'Snowflake',
-    bigquery: 'BarChart',
-    redshift: 'ArrowRightLeft',
-    kafka: 'Workflow',
-    rabbitmq: 'MessageSquare',
-    huggingface: 'Brain',
-    replicate: 'Copy',
-
-    // Communication (additional)
-    twilio: 'Phone',
-    whatsapp: 'MessageCircle',
-    firebase: 'Flame',
-    onesignal: 'Bell',
-    zendesk: 'LifeBuoy',
-    freshdesk: 'Headphones',
-    intercom: 'MessagesSquare',
-
-    // Social (additional)
-    reddit: 'MessageSquare',
-
-    // Data (additional)
-    mongodb: 'Database',
-    postgresql: 'Database',
-    mysql: 'Database',
-    notion: 'FileText',
-    'google-sheets': 'Sheet',
-
-    // AI (additional)
-    cohere: 'Sparkles',
-    mubert: 'Music',
-    suno: 'AudioLines',
-    'runway-video': 'Video',
-    'replicate-video': 'Clapperboard',
-    'heygen-advanced': 'UserCircle2',
-
-    // Utilities
-    resend: 'Mail',
   };
 
   return icons[platform] || 'Key';

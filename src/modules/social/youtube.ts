@@ -380,3 +380,103 @@ export async function getTokensFromCode(code: string) {
   const { tokens } = await oauth2Client.getToken(code);
   return tokens;
 }
+
+// ============================================
+// API KEY-BASED FUNCTIONS (Read-Only)
+// ============================================
+
+/**
+ * Search for videos using API key (read-only, no OAuth required)
+ * Simpler authentication for public data access
+ */
+export async function searchVideosWithApiKey(
+  query: string,
+  apiKey: string,
+  maxResults = 10
+) {
+  logger.info({ query, maxResults }, 'Searching videos with API key');
+
+  try {
+    // Create a simple YouTube client with just an API key
+    const youtubeApiKey = google.youtube({
+      version: 'v3',
+      auth: apiKey,
+    });
+
+    const response = await youtubeApiKey.search.list({
+      part: ['snippet'],
+      q: query,
+      type: ['video'],
+      maxResults,
+      order: 'relevance',
+    });
+
+    logger.info({ resultCount: response.data.items?.length || 0 }, 'Videos found');
+    return response.data.items || [];
+  } catch (error) {
+    logger.error({ error, query, maxResults }, 'Error searching videos with API key');
+    throw error;
+  }
+}
+
+/**
+ * Get video details using API key (read-only, no OAuth required)
+ */
+export async function getVideoDetailsWithApiKey(videoId: string, apiKey: string) {
+  logger.info({ videoId }, 'Fetching video details with API key');
+
+  try {
+    const youtubeApiKey = google.youtube({
+      version: 'v3',
+      auth: apiKey,
+    });
+
+    const response = await youtubeApiKey.videos.list({
+      part: ['snippet', 'statistics', 'contentDetails'],
+      id: [videoId],
+    });
+
+    const video = response.data.items?.[0] || null;
+    if (video) {
+      logger.info({ videoId, title: video.snippet?.title }, 'Video details fetched');
+    } else {
+      logger.warn({ videoId }, 'Video not found');
+    }
+
+    return video;
+  } catch (error) {
+    logger.error({ error, videoId }, 'Error fetching video details with API key');
+    throw error;
+  }
+}
+
+/**
+ * Get channel details using API key (read-only, no OAuth required)
+ */
+export async function getChannelDetailsWithApiKey(channelId: string, apiKey: string) {
+  logger.info({ channelId }, 'Fetching channel details with API key');
+
+  try {
+    const youtubeApiKey = google.youtube({
+      version: 'v3',
+      auth: apiKey,
+    });
+
+    const response = await youtubeApiKey.channels.list({
+      part: ['snippet', 'statistics', 'contentDetails'],
+      id: [channelId],
+    });
+
+    const channel = response.data.items?.[0] || null;
+    if (channel) {
+      logger.info({ channelId, title: channel.snippet?.title }, 'Channel details fetched');
+    } else {
+      logger.warn({ channelId }, 'Channel not found');
+    }
+
+    return channel;
+  } catch (error) {
+    logger.error({ error, channelId }, 'Error fetching channel details with API key');
+    throw error;
+  }
+}

@@ -99,13 +99,28 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   twitter: {
     id: 'twitter',
-    name: 'Twitter',
+    name: 'Twitter (OAuth 1.0a)',
     category: 'Social Media',
     fields: [
       { key: 'api_key', label: 'API Key', type: 'password', required: true },
       { key: 'api_secret', label: 'API Secret', type: 'password', required: true },
       { key: 'access_token', label: 'Access Token', type: 'password', required: true },
       { key: 'access_secret', label: 'Access Token Secret', type: 'password', required: true }
+    ]
+  },
+
+  twitter_oauth2: {
+    id: 'twitter_oauth2',
+    name: 'Twitter (OAuth 2.0)',
+    category: 'Social Media',
+    fields: [
+      {
+        key: 'access_token',
+        label: 'Bearer Token',
+        type: 'password',
+        required: true,
+        description: 'OAuth 2.0 Bearer Token for user-level access'
+      }
     ]
   },
 
@@ -123,12 +138,28 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
 
   youtube: {
     id: 'youtube',
-    name: 'YouTube',
+    name: 'YouTube (OAuth)',
     category: 'Social Media',
     fields: [
       { key: 'client_id', label: 'Client ID', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
       { key: 'refresh_token', label: 'Refresh Token', type: 'password', required: true }
+    ]
+  },
+
+  youtube_apikey: {
+    id: 'youtube_apikey',
+    name: 'YouTube (API Key)',
+    category: 'Social Media',
+    fields: [
+      {
+        key: 'api_key',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+        placeholder: 'AIza...',
+        description: 'API key from Google Cloud Console (for read-only operations)'
+      }
     ]
   },
 
@@ -156,19 +187,59 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   slack: {
     id: 'slack',
-    name: 'Slack',
+    name: 'Slack (Bot Token)',
     category: 'Communication',
     fields: [
-      { key: 'bot_token', label: 'Bot Token', type: 'password', required: true, placeholder: 'xoxb-...' }
+      {
+        key: 'bot_token',
+        label: 'Bot Token',
+        type: 'password',
+        required: true,
+        placeholder: 'xoxb-...',
+        description: 'Bot user token (simpler for team automation)'
+      }
+    ]
+  },
+
+  slack_oauth: {
+    id: 'slack_oauth',
+    name: 'Slack (OAuth User Token)',
+    category: 'Communication',
+    fields: [
+      {
+        key: 'user_token',
+        label: 'User OAuth Token',
+        type: 'password',
+        required: true,
+        placeholder: 'xoxp-...',
+        description: 'User-level OAuth token for personal actions'
+      }
     ]
   },
 
   discord: {
     id: 'discord',
-    name: 'Discord',
+    name: 'Discord (Bot Token)',
     category: 'Communication',
     fields: [
-      { key: 'bot_token', label: 'Bot Token', type: 'password', required: true }
+      {
+        key: 'bot_token',
+        label: 'Bot Token',
+        type: 'password',
+        required: true,
+        description: 'Bot token from Discord Developer Portal (simpler for server automation)'
+      }
+    ]
+  },
+
+  discord_oauth: {
+    id: 'discord_oauth',
+    name: 'Discord (OAuth)',
+    category: 'Communication',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth token for user-level actions' }
     ]
   },
 
@@ -246,29 +317,97 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   airtable: {
     id: 'airtable',
-    name: 'Airtable',
+    name: 'Airtable (Personal Access Token)',
     category: 'Data',
     fields: [
-      { key: 'api_key', label: 'API Key', type: 'password', required: true }
+      {
+        key: 'api_key',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+        placeholder: 'pat...',
+        description: 'Personal token from Airtable account (simpler for personal bases)'
+      }
+    ]
+  },
+
+  airtable_oauth: {
+    id: 'airtable_oauth',
+    name: 'Airtable (OAuth)',
+    category: 'Data',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth token for multi-user apps' }
     ]
   },
 
   notion: {
     id: 'notion',
-    name: 'Notion',
+    name: 'Notion (Integration Token)',
     category: 'Data',
     fields: [
-      { key: 'api_key', label: 'Integration Token', type: 'password', required: true }
+      {
+        key: 'api_key',
+        label: 'Integration Token',
+        type: 'password',
+        required: true,
+        placeholder: 'secret_...',
+        description: 'Internal integration token (simpler for single workspace)'
+      }
+    ]
+  },
+
+  notion_oauth: {
+    id: 'notion_oauth',
+    name: 'Notion (OAuth)',
+    category: 'Data',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth access token for multi-workspace integrations' }
+    ]
+  },
+
+  googlecalendar: {
+    id: 'googlecalendar',
+    name: 'Google Calendar (OAuth)',
+    category: 'Productivity',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'refresh_token', label: 'Refresh Token', type: 'password', required: true, description: 'OAuth token for personal calendars' }
+    ]
+  },
+
+  googlecalendar_serviceaccount: {
+    id: 'googlecalendar_serviceaccount',
+    name: 'Google Calendar (Service Account)',
+    category: 'Productivity',
+    fields: [
+      { key: 'service_account_email', label: 'Service Account Email', type: 'email', required: true },
+      { key: 'private_key', label: 'Private Key', type: 'textarea', required: true, description: 'For domain-wide delegation and shared calendars' }
     ]
   },
 
   googlesheets: {
     id: 'googlesheets',
-    name: 'Google Sheets',
+    name: 'Google Sheets (Service Account)',
     category: 'Data',
     fields: [
       { key: 'service_account_email', label: 'Service Account Email', type: 'email', required: true },
-      { key: 'private_key', label: 'Private Key', type: 'textarea', required: true, description: 'Paste the entire private key from your service account JSON' }
+      { key: 'private_key', label: 'Private Key', type: 'textarea', required: true, description: 'Paste the entire private key from your service account JSON (simpler for automation)' }
+    ]
+  },
+
+  googlesheets_oauth: {
+    id: 'googlesheets_oauth',
+    name: 'Google Sheets (OAuth)',
+    category: 'Data',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'refresh_token', label: 'Refresh Token', type: 'password', required: true, description: 'OAuth refresh token for user-level access' }
     ]
   },
 
@@ -312,22 +451,51 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   hubspot: {
     id: 'hubspot',
-    name: 'HubSpot',
+    name: 'HubSpot (Private App Token)',
     category: 'Business',
     fields: [
-      { key: 'api_key', label: 'API Key', type: 'password', required: true }
+      {
+        key: 'api_key',
+        label: 'Private App Access Token',
+        type: 'password',
+        required: true,
+        placeholder: 'pat-...',
+        description: 'Private app token (simpler for single account)'
+      }
+    ]
+  },
+
+  hubspot_oauth: {
+    id: 'hubspot_oauth',
+    name: 'HubSpot (OAuth)',
+    category: 'Business',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth token for public apps' }
     ]
   },
 
   salesforce: {
     id: 'salesforce',
-    name: 'Salesforce',
+    name: 'Salesforce (OAuth)',
     category: 'Business',
     fields: [
       { key: 'client_id', label: 'Client ID', type: 'text', required: true },
       { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
       { key: 'username', label: 'Username', type: 'text', required: true },
-      { key: 'password', label: 'Password', type: 'password', required: true }
+      { key: 'password', label: 'Password', type: 'password', required: true, description: 'OAuth username-password flow' }
+    ]
+  },
+
+  salesforce_jwt: {
+    id: 'salesforce_jwt',
+    name: 'Salesforce (JWT Bearer)',
+    category: 'Business',
+    fields: [
+      { key: 'client_id', label: 'Consumer Key', type: 'text', required: true },
+      { key: 'username', label: 'Username', type: 'text', required: true },
+      { key: 'private_key', label: 'Private Key', type: 'textarea', required: true, description: 'JWT private key for server-to-server authentication' }
     ]
   },
 
@@ -346,10 +514,28 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   stripe: {
     id: 'stripe',
-    name: 'Stripe',
+    name: 'Stripe (Secret Key)',
     category: 'Payments',
     fields: [
-      { key: 'secret_key', label: 'Secret Key', type: 'password', required: true, placeholder: 'sk_...' }
+      {
+        key: 'secret_key',
+        label: 'Secret Key',
+        type: 'password',
+        required: true,
+        placeholder: 'sk_...',
+        description: 'Direct secret key (simpler for single account)'
+      }
+    ]
+  },
+
+  stripe_connect: {
+    id: 'stripe_connect',
+    name: 'Stripe (Connect/OAuth)',
+    category: 'Payments',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth Connect token for marketplace platforms' }
     ]
   },
 
@@ -393,10 +579,28 @@ export const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   // ============================================
   github: {
     id: 'github',
-    name: 'GitHub',
+    name: 'GitHub (Personal Access Token)',
     category: 'Developer Tools',
     fields: [
-      { key: 'token', label: 'Personal Access Token', type: 'password', required: true }
+      {
+        key: 'token',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+        placeholder: 'ghp_...',
+        description: 'Personal Access Token from GitHub settings (simpler for automation)'
+      }
+    ]
+  },
+
+  github_oauth: {
+    id: 'github_oauth',
+    name: 'GitHub (OAuth App)',
+    category: 'Developer Tools',
+    fields: [
+      { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { key: 'access_token', label: 'Access Token', type: 'password', required: true, description: 'OAuth access token for user operations' }
     ]
   },
 
