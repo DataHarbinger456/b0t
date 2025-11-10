@@ -110,8 +110,8 @@ export function ChatInputExecute({ fields, onExecute, executing = false, onReady
               <SelectValue placeholder={field.placeholder || 'Select an option'} />
             </SelectTrigger>
             <SelectContent>
-              {(field.options || []).map((option) => (
-                <SelectItem key={option} value={option}>
+              {(field.options || []).map((option, index) => (
+                <SelectItem key={`${field.key}-${option}-${index}`} value={option}>
                   {option}
                 </SelectItem>
               ))}
@@ -160,7 +160,7 @@ export function ChatInputExecute({ fields, onExecute, executing = false, onReady
   return (
     <div className="space-y-4">
       {fields.map((field) => (
-        <div key={field.id} className="space-y-2">
+        <div key={field.key} className="space-y-2">
           {field.type !== 'checkbox' && (
             <Label htmlFor={field.key}>
               {field.label}
