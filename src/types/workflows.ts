@@ -13,6 +13,7 @@ export interface WorkflowListItem {
   lastRunStatus: string | null;
   lastRunOutput: unknown | null;
   runCount: number;
+  conversationCount?: number;
 }
 
 export interface CredentialListItem {

@@ -289,8 +289,10 @@ export function WorkflowCard({ workflow, onDeleted, onExport, onUpdated }: Workf
             <span>{formatDate(workflow.lastRun)}</span>
           </div>
           <div className="flex justify-between">
-            <span>Runs:</span>
-            <span className="font-medium">{workflow.runCount}</span>
+            <span>{workflow.trigger.type === 'chat' ? 'Chats:' : 'Runs:'}</span>
+            <span className="font-medium">
+              {workflow.trigger.type === 'chat' ? (workflow.conversationCount ?? 0) : workflow.runCount}
+            </span>
           </div>
         </div>
 
@@ -371,6 +373,7 @@ export function WorkflowCard({ workflow, onDeleted, onExport, onUpdated }: Workf
         workflowId={workflow.id}
         workflowName={workflow.name}
         workflowConfig={workflow.config}
+        triggerType={workflow.trigger?.type}
         open={outputsDialogOpen}
         onOpenChange={setOutputsDialogOpen}
       />

@@ -222,6 +222,43 @@ export const userCredentialsTable = pgTable('user_credentials', {
 }));
 
 // ============================================
+// CHAT CONVERSATIONS TABLES
+// ============================================
+
+// Chat conversations table (stores conversation sessions for chat workflows)
+export const chatConversationsTable = pgTable('chat_conversations', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  workflowId: varchar('workflow_id', { length: 255 }).notNull(),
+  workflowRunId: varchar('workflow_run_id', { length: 255 }),
+  userId: varchar('user_id', { length: 255 }).notNull(),
+  organizationId: varchar('organization_id', { length: 255 }),
+  title: varchar('title', { length: 500 }),
+  status: varchar('status', { length: 50 }).notNull().default('active'),
+  messageCount: integer('message_count').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  workflowIdIdx: index('chat_conversations_workflow_id_idx').on(table.workflowId),
+  workflowRunIdIdx: index('chat_conversations_workflow_run_id_idx').on(table.workflowRunId),
+  userIdIdx: index('chat_conversations_user_id_idx').on(table.userId),
+  organizationIdIdx: index('chat_conversations_organization_id_idx').on(table.organizationId),
+  createdAtIdx: index('chat_conversations_created_at_idx').on(table.createdAt),
+}));
+
+// Chat messages table (stores individual messages within conversations)
+export const chatMessagesTable = pgTable('chat_messages', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  conversationId: varchar('conversation_id', { length: 255 }).notNull(),
+  role: varchar('role', { length: 50 }).notNull(),
+  content: text('content').notNull(),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  conversationIdIdx: index('chat_messages_conversation_id_idx').on(table.conversationId),
+  createdAtIdx: index('chat_messages_created_at_idx').on(table.createdAt),
+}));
+
+// ============================================
 // WORKFLOW DATA TRACKING TABLES
 // ============================================
 
@@ -277,5 +314,9 @@ export type WorkflowRun = typeof workflowRunsTable.$inferSelect;
 export type NewWorkflowRun = typeof workflowRunsTable.$inferInsert;
 export type UserCredential = typeof userCredentialsTable.$inferSelect;
 export type NewUserCredential = typeof userCredentialsTable.$inferInsert;
+export type ChatConversation = typeof chatConversationsTable.$inferSelect;
+export type NewChatConversation = typeof chatConversationsTable.$inferInsert;
+export type ChatMessage = typeof chatMessagesTable.$inferSelect;
+export type NewChatMessage = typeof chatMessagesTable.$inferInsert;
 export type TweetReply = typeof tweetRepliesTable.$inferSelect;
 export type NewTweetReply = typeof tweetRepliesTable.$inferInsert;

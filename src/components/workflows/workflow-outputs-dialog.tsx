@@ -33,6 +33,7 @@ interface WorkflowOutputsDialogProps {
   workflowId: string;
   workflowName: string;
   workflowConfig?: Record<string, unknown>;
+  triggerType?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -85,6 +86,7 @@ export function WorkflowOutputsDialog({
   workflowId,
   workflowName,
   workflowConfig,
+  triggerType,
   open,
   onOpenChange,
 }: WorkflowOutputsDialogProps) {
@@ -96,14 +98,24 @@ export function WorkflowOutputsDialog({
   const [hasMore, setHasMore] = useState(true);
   const observerTarget = useRef<HTMLDivElement>(null);
 
+  // Check if this is a chat workflow
+  const isChatWorkflow = triggerType === 'chat';
+
   useEffect(() => {
     if (open) {
+      // For chat workflows, skip this dialog and immediately open conversation history
+      if (isChatWorkflow) {
+        setOutputModalOpen(true);
+        onOpenChange(false); // Close the workflow outputs dialog
+        return;
+      }
+
       setRuns([]);
       setHasMore(true);
       fetchRuns(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, workflowId]);
+  }, [open, workflowId, isChatWorkflow]);
 
   const fetchRuns = async (reset = false) => {
     if (reset) {
@@ -306,6 +318,8 @@ export function WorkflowOutputsDialog({
         run={selectedRun}
         modulePath={getLastStepModule(workflowConfig)}
         workflowConfig={workflowConfig}
+        workflowId={workflowId}
+        triggerType={triggerType}
         open={outputModalOpen}
         onOpenChange={setOutputModalOpen}
       />

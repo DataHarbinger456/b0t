@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { workflowsTable } from '@/lib/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { workflowsTable, chatConversationsTable } from '@/lib/schema';
+import { eq, and, isNull, count } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -55,11 +55,33 @@ export async function GET(request: Request) {
       .orderBy(workflowsTable.createdAt);
 
     // Parse config and trigger if they're strings
-    const workflows = rawWorkflows.map((workflow) => ({
-      ...workflow,
-      config: typeof workflow.config === 'string' ? JSON.parse(workflow.config) : workflow.config,
-      trigger: typeof workflow.trigger === 'string' ? JSON.parse(workflow.trigger) : workflow.trigger,
-    }));
+    const workflows = await Promise.all(
+      rawWorkflows.map(async (workflow) => {
+        const parsedTrigger = typeof workflow.trigger === 'string' ? JSON.parse(workflow.trigger) : workflow.trigger;
+
+        // For chat workflows, get conversation count
+        let conversationCount = 0;
+        if (parsedTrigger.type === 'chat') {
+          const result = await db
+            .select({ count: count() })
+            .from(chatConversationsTable)
+            .where(
+              and(
+                eq(chatConversationsTable.workflowId, workflow.id),
+                eq(chatConversationsTable.status, 'active')
+              )
+            );
+          conversationCount = result[0]?.count || 0;
+        }
+
+        return {
+          ...workflow,
+          config: typeof workflow.config === 'string' ? JSON.parse(workflow.config) : workflow.config,
+          trigger: parsedTrigger,
+          conversationCount,
+        };
+      })
+    );
 
     return NextResponse.json({ workflows });
   } catch (error) {

@@ -7,9 +7,9 @@ import { useEffect, useRef, useState } from 'react';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard' },
   { name: 'Workflows', href: '/dashboard/workflows' },
-  { name: 'Clients', href: '/dashboard/clients' },
-  { name: 'Credentials', href: '/dashboard/credentials' },
   { name: 'Activity', href: '/dashboard/activity' },
+  { name: 'Credentials', href: '/dashboard/credentials' },
+  { name: 'Clients', href: '/dashboard/clients' },
   // { name: 'Settings', href: '/settings' },
 ];
 

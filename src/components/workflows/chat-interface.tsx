@@ -15,6 +15,7 @@ interface ChatInterfaceProps {
   workflowId: string;
   workflowName: string;
   workflowDescription?: string;
+  conversationId?: string;
   onFullscreenChange?: (isFullscreen: boolean) => void;
 }
 
@@ -22,12 +23,14 @@ export function ChatInterface({
   workflowId,
   workflowName,
   workflowDescription,
+  conversationId: initialConversationId,
   onFullscreenChange,
 }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [input, setInput] = useState('');
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const toggleFullscreen = () => {
     const newFullscreen = !isFullscreen;
@@ -35,9 +38,12 @@ export function ChatInterface({
     onFullscreenChange?.(newFullscreen);
   };
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, setMessages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: `/api/workflows/${workflowId}/chat`,
+      body: initialConversationId ? {
+        conversationId: initialConversationId,
+      } : undefined,
     }),
     messages: [
       {
@@ -52,6 +58,47 @@ export function ChatInterface({
       },
     ],
   });
+
+  // Load conversation history if conversationId is provided
+  useEffect(() => {
+    if (initialConversationId && !isLoadingHistory) {
+      setIsLoadingHistory(true);
+      fetch(`/api/workflows/${workflowId}/chat?conversationId=${initialConversationId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.messages && data.messages.length > 0) {
+            // Convert DB messages to AI SDK format
+            const loadedMessages = data.messages.map((msg: { id: string; role: string; content: string }) => ({
+              id: msg.id,
+              role: msg.role,
+              parts: [{
+                type: 'text',
+                text: msg.content,
+              }],
+            }));
+
+            // Prepend welcome message
+            setMessages([
+              {
+                id: 'welcome',
+                role: 'assistant',
+                parts: [{
+                  type: 'text',
+                  text: `Hi! I'm here to help you with **${workflowName}**.\n\n${workflowDescription || 'How can I assist you today?'}`,
+                }],
+              },
+              ...loadedMessages,
+            ]);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load conversation history:', error);
+        })
+        .finally(() => {
+          setIsLoadingHistory(false);
+        });
+    }
+  }, [initialConversationId, workflowId, workflowName, workflowDescription, isLoadingHistory, setMessages]);
 
   // Extract text content from message parts
   const getMessageText = (message: typeof messages[0]) => {
@@ -101,7 +148,7 @@ export function ChatInterface({
       <button
         type="button"
         onClick={toggleFullscreen}
-        className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-12 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 z-10"
+        className="ring-offset-background focus:ring-ring absolute top-4 right-14 rounded-sm p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 z-10"
       >
         {isFullscreen ? (
           <Minimize2 className="h-4 w-4" />
